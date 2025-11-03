@@ -1,21 +1,19 @@
 package com.tp.persistencia.persistencia_poliglota.model.nosql;
 
-import lombok.*;
+import lombok.Data;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 import java.time.LocalDateTime;
 
-@Document(collection = "alertas")
 @Data
-@NoArgsConstructor
-@AllArgsConstructor
+@Document(collection = "alertas")
 public class Alerta {
 
     @Id
     private String id;
-    private String tipo; // sensor o climática
-    private String sensorId;
-    private LocalDateTime fechaHora;
-    private String descripcion;
-    private String estado; // activa o resuelta
+
+    private Long usuarioId;       // ID del usuario SQL
+    private String mensaje;
+    private String nivel;         // por ejemplo: "ALTA", "MEDIA", "BAJA"
+    private LocalDateTime fechaCreacion = LocalDateTime.now();
 }
