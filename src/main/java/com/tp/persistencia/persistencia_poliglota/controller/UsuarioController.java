@@ -1,20 +1,25 @@
 package com.tp.persistencia.persistencia_poliglota.controller;
 
+import com.tp.persistencia.persistencia_poliglota.model.sql.Rol;
 import com.tp.persistencia.persistencia_poliglota.model.sql.Usuario;
+import com.tp.persistencia.persistencia_poliglota.repository.RolRepository;
 import com.tp.persistencia.persistencia_poliglota.service.UsuarioService;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.http.ResponseEntity;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 @RestController
 @RequestMapping("/api/usuarios")
 public class UsuarioController {
 
     private final UsuarioService usuarioService;
+    private final RolRepository rolRepository;
 
-    public UsuarioController(UsuarioService usuarioService) {
+    public UsuarioController(UsuarioService usuarioService, RolRepository rolRepository) {
         this.usuarioService = usuarioService;
+        this.rolRepository = rolRepository;
     }
 
     @GetMapping
@@ -41,9 +46,10 @@ public class UsuarioController {
             return ResponseEntity.status(400).body(
                 Map.of("message", "Estado inválido", "errors", Map.of("estado", "Debe ser 'activo' o 'inactivo'")));
         }
-        if (usuario.getRol() == null || usuario.getRol().getId() == null) {
+        if (usuario.getRol() == null ||
+            (usuario.getRol().getId() == null && (usuario.getRol().getDescripcion() == null || usuario.getRol().getDescripcion().isBlank()))) {
             return ResponseEntity.status(400).body(
-                Map.of("message", "Rol es requerido", "errors", Map.of("rol", "Debe enviar objeto {id}")));
+                Map.of("message", "Rol es requerido", "errors", Map.of("rol", "Debe enviar objeto {id} o {descripcion}")));
         }
 
         // Email duplicado
@@ -51,6 +57,24 @@ public class UsuarioController {
             return ResponseEntity.status(409).body(
                 Map.of("message", "Email duplicado", "errors", Map.of("email", "Ya existe un usuario con ese email")));
         }
+
+        // Resolver rol
+        Rol rolSeleccionado = null;
+        if (usuario.getRol().getId() != null) {
+            Long rolId = usuario.getRol().getId();
+            rolSeleccionado = rolRepository.findById(Objects.requireNonNull(rolId)).orElse(null);
+            if (rolSeleccionado == null) {
+                return ResponseEntity.status(400).body(
+                    Map.of("message", "Rol inexistente", "errors", Map.of("rol.id", "No existe rol con id=" + usuario.getRol().getId())));
+            }
+        } else if (usuario.getRol().getDescripcion() != null) {
+            rolSeleccionado = rolRepository.findByDescripcion(usuario.getRol().getDescripcion());
+            if (rolSeleccionado == null) {
+                return ResponseEntity.status(400).body(
+                    Map.of("message", "Rol inexistente", "errors", Map.of("rol.descripcion", "No existe rol con descripcion='" + usuario.getRol().getDescripcion() + "'")));
+            }
+        }
+        usuario.setRol(rolSeleccionado);
 
         Usuario guardado = usuarioService.guardarUsuario(usuario);
         // Excluir contraseña en respuesta
