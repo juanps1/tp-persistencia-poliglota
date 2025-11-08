@@ -23,7 +23,12 @@ public class ProcesoService {
         return procesoRepository.save(proceso);
     }
 
-    public void eliminar(Long id) {
-        procesoRepository.deleteById(id);
+    public boolean eliminar(Long id) {
+        if (procesoRepository.existsById(id)) {
+            procesoRepository.deleteById(id);
+            return true;
+        } else {
+            return false;
+        }
     }
 }

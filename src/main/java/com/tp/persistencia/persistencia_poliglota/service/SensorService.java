@@ -23,4 +23,10 @@ public class SensorService {
     public Sensor guardarSensor(Sensor sensor) {
         return sensorRepository.save(sensor);
     }
+
+    public boolean existeNombre(String nombre) { return sensorRepository.existsByNombre(nombre); }
+
+    public Sensor buscarPorId(String id) { return sensorRepository.findById(id).orElse(null); }
+
+    public Sensor actualizar(Sensor sensor) { return sensorRepository.save(sensor); }
 }

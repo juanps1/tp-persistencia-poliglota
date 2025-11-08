@@ -1,3 +1,4 @@
+
 package com.tp.persistencia.persistencia_poliglota.service;
 import com.tp.persistencia.persistencia_poliglota.model.sql.Usuario;
 import com.tp.persistencia.persistencia_poliglota.repository.UsuarioRepository;
@@ -19,5 +20,9 @@ public class UsuarioService {
 
     public Usuario guardarUsuario(Usuario usuario) {
         return usuarioRepository.save(usuario);
+    }
+
+    public boolean existeEmail(String email) {
+        return usuarioRepository.findByEmail(email).isPresent();
     }
 }

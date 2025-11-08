@@ -4,6 +4,8 @@ import com.tp.persistencia.persistencia_poliglota.model.sql.Proceso;
 import com.tp.persistencia.persistencia_poliglota.service.ProcesoService;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
+import org.springframework.http.ResponseEntity;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/procesos")
@@ -21,12 +23,23 @@ public class ProcesoController {
     }
 
     @PostMapping
-    public Proceso guardar(@RequestBody Proceso proceso) {
-        return procesoService.guardar(proceso);
+    public ResponseEntity<?> guardar(@RequestBody Proceso proceso) {
+        if (proceso.getNombre() == null || proceso.getNombre().isEmpty()) {
+            return ResponseEntity.status(400).body(
+                Map.of("message", "Nombre es requerido", "errors", Map.of("nombre", "Campo obligatorio")));
+        }
+        Proceso guardado = procesoService.guardar(proceso);
+        return ResponseEntity.status(201).body(guardado);
     }
 
     @DeleteMapping("/{id}")
-    public void eliminar(@PathVariable Long id) {
-        procesoService.eliminar(id);
+    public ResponseEntity<?> eliminar(@PathVariable Long id) {
+        boolean eliminado = procesoService.eliminar(id);
+        if (eliminado) {
+            return ResponseEntity.status(204).build();
+        } else {
+            return ResponseEntity.status(404).body(
+                Map.of("message", "Proceso no encontrado", "errors", Map.of("id", "No existe proceso con ese id")));
+        }
     }
 }
