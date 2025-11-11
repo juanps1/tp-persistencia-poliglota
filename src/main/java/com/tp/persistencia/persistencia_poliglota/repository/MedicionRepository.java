@@ -14,4 +14,8 @@ public interface MedicionRepository extends MongoRepository<Medicion, String> {
     
     // Buscar mediciones por lista de sensores (para filtrar por ciudad/país)
     List<Medicion> findBySensorIdInAndFechaHoraBetween(List<String> sensorIds, LocalDateTime desde, LocalDateTime hasta);
+    
+    // Eliminar mediciones por sensor
+    long deleteBySensorId(String sensorId);
 }
+

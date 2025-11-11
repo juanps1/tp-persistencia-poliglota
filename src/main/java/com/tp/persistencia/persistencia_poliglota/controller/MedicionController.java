@@ -18,6 +18,11 @@ public class MedicionController {
         this.medicionService = medicionService;
     }
 
+    @GetMapping
+    public List<Medicion> listarTodas() {
+        return medicionService.listarTodas();
+    }
+
     @GetMapping("/{sensorId}")
     public List<Medicion> listarPorSensor(@PathVariable String sensorId) {
         return medicionService.listarPorSensor(sensorId);
@@ -44,4 +49,28 @@ public class MedicionController {
         Medicion guardada = medicionService.guardarMedicion(medicion);
         return ResponseEntity.status(201).body(guardada);
     }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<?> eliminar(@PathVariable String id) {
+        Medicion existente = medicionService.buscarPorId(id);
+        if (existente == null) {
+            return ResponseEntity.status(404).body(Map.of(
+                "message", "Medición no encontrada",
+                "errors", Map.of("id", "No existe medición con ese id")));
+        }
+        medicionService.eliminar(id);
+        return ResponseEntity.ok(Map.of(
+            "message", "Medición eliminada correctamente",
+            "id", id));
+    }
+
+    @DeleteMapping("/sensor/{sensorId}")
+    public ResponseEntity<?> eliminarPorSensor(@PathVariable String sensorId) {
+        long eliminadas = medicionService.eliminarPorSensor(sensorId);
+        return ResponseEntity.ok(Map.of(
+            "message", "Mediciones eliminadas correctamente",
+            "sensorId", sensorId,
+            "cantidad", eliminadas));
+    }
 }
+

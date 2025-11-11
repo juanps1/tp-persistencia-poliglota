@@ -2,6 +2,7 @@ package com.tp.persistencia.persistencia_poliglota.model.sql;
 
 import jakarta.persistence.*;
 import lombok.*;
+import java.util.ArrayList;
 import java.util.List;
 
 @Entity
@@ -19,8 +20,10 @@ public class CuentaCorriente {
     @JoinColumn(name = "usuario_id")
     private Usuario usuario;
 
-    private double saldoActual;
+    @Column(nullable = false)
+    private Double saldoActual = 0.0;
 
-    @ElementCollection
-    private List<String> historialMovimientos;
+    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
+    @JoinColumn(name = "cuenta_corriente_id")
+    private List<MovimientoCuenta> movimientos = new ArrayList<>();
 }

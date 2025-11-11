@@ -3,12 +3,17 @@ package com.tp.persistencia.persistencia_poliglota.controller;
 import com.tp.persistencia.persistencia_poliglota.model.sql.Rol;
 import com.tp.persistencia.persistencia_poliglota.model.sql.Usuario;
 import com.tp.persistencia.persistencia_poliglota.repository.RolRepository;
+import com.tp.persistencia.persistencia_poliglota.repository.UsuarioRepository;
 import com.tp.persistencia.persistencia_poliglota.service.UsuarioService;
-import org.springframework.web.bind.annotation.*;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/usuarios")
@@ -16,15 +21,23 @@ public class UsuarioController {
 
     private final UsuarioService usuarioService;
     private final RolRepository rolRepository;
+    private final PasswordEncoder passwordEncoder;
+    private final UsuarioRepository usuarioRepository;
 
-    public UsuarioController(UsuarioService usuarioService, RolRepository rolRepository) {
+    public UsuarioController(UsuarioService usuarioService, RolRepository rolRepository, PasswordEncoder passwordEncoder, UsuarioRepository usuarioRepository) {
         this.usuarioService = usuarioService;
         this.rolRepository = rolRepository;
+        this.passwordEncoder = passwordEncoder;
+        this.usuarioRepository = usuarioRepository;
     }
 
     @GetMapping
     public List<Usuario> listar() {
-        return usuarioService.listarUsuarios();
+        // Sanear contraseñas
+        return usuarioService.listarUsuarios().stream().map(u -> {
+            u.setContrasena(null);
+            return u;
+        }).collect(Collectors.toList());
     }
 
     @PostMapping
@@ -76,9 +89,78 @@ public class UsuarioController {
         }
         usuario.setRol(rolSeleccionado);
 
+        // Hash de contraseña
+        usuario.setContrasena(passwordEncoder.encode(usuario.getContrasena()));
+
         Usuario guardado = usuarioService.guardarUsuario(usuario);
         // Excluir contraseña en respuesta
         guardado.setContrasena(null);
         return ResponseEntity.status(201).body(guardado);
+    }
+
+    @PatchMapping("/{id}/rol")
+    public ResponseEntity<?> cambiarRol(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+        Object rolObj = body.get("rolId");
+        if (rolObj == null) {
+            return ResponseEntity.status(400).body(Map.of(
+                "message", "rolId es requerido",
+                "errors", Map.of("rolId", "Debe enviar un número (1=ADMIN,2=USER)")));
+        }
+        Long nuevoRolId;
+        try {
+            nuevoRolId = Long.valueOf(String.valueOf(rolObj));
+        } catch (NumberFormatException e) {
+            return ResponseEntity.status(400).body(Map.of(
+                "message", "rolId inválido",
+                "errors", Map.of("rolId", "Debe ser numérico")));
+        }
+        if (!(nuevoRolId == 1L || nuevoRolId == 2L)) {
+            return ResponseEntity.status(400).body(Map.of(
+                "message", "rolId inválido",
+                "errors", Map.of("rolId", "Sólo se admite 1 (ADMIN) o 2 (USER)")));
+        }
+        Usuario usuario = usuarioService.listarUsuarios().stream().filter(u -> u.getId().equals(id)).findFirst().orElse(null);
+        if (usuario == null) {
+            return ResponseEntity.status(404).body(Map.of(
+                "message", "Usuario no encontrado",
+                "errors", Map.of("id", "No existe usuario con id=" + id)));
+        }
+        Rol rol = rolRepository.findById(nuevoRolId).orElse(null);
+        if (rol == null) {
+            return ResponseEntity.status(500).body(Map.of(
+                "message", "Roles base faltantes",
+                "errors", Map.of("rolId", "Debe existir rol con id=" + nuevoRolId)));
+        }
+        usuario.setRol(rol);
+        Usuario actualizado = usuarioService.guardarUsuario(usuario);
+        actualizado.setContrasena(null);
+        return ResponseEntity.ok(Map.of(
+            "message", "Rol actualizado",
+            "usuarioId", actualizado.getId(),
+            "rolId", actualizado.getRol().getId(),
+            "rol", actualizado.getRol().getDescripcion()
+        ));
+    }
+
+    @GetMapping("/me")
+    public ResponseEntity<?> me() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || auth.getPrincipal() == null) {
+            return ResponseEntity.status(401).body(Map.of("message", "No autenticado"));
+        }
+        String email = String.valueOf(auth.getPrincipal());
+        Usuario usuario = usuarioRepository.findByEmail(email).orElse(null);
+        if (usuario == null) {
+            return ResponseEntity.status(404).body(Map.of("message", "Usuario no encontrado"));
+        }
+        Map<String, Object> data = Map.of(
+            "id", usuario.getId(),
+            "email", usuario.getEmail(),
+            "nombreCompleto", usuario.getNombreCompleto(),
+            "estado", usuario.getEstado(),
+            "rolId", usuario.getRol() != null ? usuario.getRol().getId() : null,
+            "rol", usuario.getRol() != null ? usuario.getRol().getDescripcion() : null
+        );
+        return ResponseEntity.ok(data);
     }
 }

@@ -25,4 +25,12 @@ public class UsuarioService {
     public boolean existeEmail(String email) {
         return usuarioRepository.findByEmail(email).isPresent();
     }
+
+    public Usuario actualizarRol(Long usuarioId, Long rolId) {
+        Usuario usuario = usuarioRepository.findById(usuarioId).orElse(null);
+        if (usuario == null) return null;
+        // Asumimos que el rol existe y se validó en el controller
+        usuario.getRol().setId(rolId);
+        return usuarioRepository.save(usuario);
+    }
 }

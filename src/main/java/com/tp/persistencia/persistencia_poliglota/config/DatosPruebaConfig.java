@@ -20,11 +20,11 @@ public class DatosPruebaConfig {
     CommandLineRunner initDatosPrueba(SensorRepository sensorRepository, 
                                       MedicionRepository medicionRepository) {
         return args -> {
-            // Solo ejecutar si no hay sensores
-            if (sensorRepository.count() > 0) {
-                System.out.println("Ya existen sensores, omitiendo inicialización de datos de prueba");
-                return;
-            }
+            // Limpiar datos existentes para regenerar
+            System.out.println("Limpiando datos existentes de MongoDB...");
+            medicionRepository.deleteAll();
+            sensorRepository.deleteAll();
+            System.out.println("Datos eliminados. Regenerando con período 2020-2025...");
 
             System.out.println("Inicializando datos de prueba...");
 
@@ -56,32 +56,50 @@ public class DatosPruebaConfig {
             sensorRepository.saveAll(sensores);
             System.out.println("Creados " + sensores.size() + " sensores");
 
-            // Crear mediciones para los últimos 3 meses
+            // Crear mediciones desde 2020 hasta hoy (aprox 20k mediciones)
             List<Medicion> mediciones = new ArrayList<>();
-            LocalDateTime fechaInicio = LocalDateTime.now().minusMonths(3);
+            LocalDateTime fechaInicio = LocalDateTime.of(2020, 1, 1, 0, 0);
             LocalDateTime fechaFin = LocalDateTime.now();
+            
+            // Calcular intervalo para generar ~20k mediciones con 12 sensores
+            // 20000 / 12 sensores = ~1666 mediciones por sensor
+            long diasTotales = java.time.temporal.ChronoUnit.DAYS.between(fechaInicio, fechaFin);
+            int medicionesPorSensor = 1666;
+            long horasIntervalo = (diasTotales * 24) / medicionesPorSensor;
 
             for (Sensor sensor : sensores) {
-                // Generar mediciones cada 2 horas
+                // Generar mediciones con intervalo calculado
                 LocalDateTime fechaActual = fechaInicio;
+                int contador = 0;
                 
-                while (fechaActual.isBefore(fechaFin)) {
+                while (fechaActual.isBefore(fechaFin) && contador < medicionesPorSensor) {
                     Medicion medicion = new Medicion();
                     medicion.setSensorId(sensor.getId());
                     medicion.setFechaHora(fechaActual);
                     
-                    // Temperatura entre 5°C y 35°C con variación por ciudad
+                    // Temperatura entre 5°C y 35°C con variación por ciudad y estacionalidad
                     double tempBase = sensor.getCiudad().equals("Mendoza") ? 20 : 18;
-                    double tempVariacion = random.nextGaussian() * 5; // Desviación estándar de 5°C
-                    medicion.setTemperatura(Math.max(5, Math.min(35, tempBase + tempVariacion)));
+                    
+                    // Variación estacional (más calor en verano, más frío en invierno)
+                    int mes = fechaActual.getMonthValue();
+                    double variacionEstacional = 0;
+                    if (mes == 12 || mes == 1 || mes == 2) { // Verano
+                        variacionEstacional = 8;
+                    } else if (mes >= 6 && mes <= 8) { // Invierno
+                        variacionEstacional = -8;
+                    }
+                    
+                    double tempVariacion = random.nextGaussian() * 5;
+                    medicion.setTemperatura(Math.max(5, Math.min(35, tempBase + variacionEstacional + tempVariacion)));
                     
                     // Humedad entre 30% y 90%
                     double humBase = 60;
-                    double humVariacion = random.nextGaussian() * 15; // Desviación estándar de 15%
+                    double humVariacion = random.nextGaussian() * 15;
                     medicion.setHumedad(Math.max(30, Math.min(90, humBase + humVariacion)));
                     
                     mediciones.add(medicion);
-                    fechaActual = fechaActual.plusHours(2);
+                    fechaActual = fechaActual.plusHours(horasIntervalo);
+                    contador++;
                 }
             }
 
@@ -94,7 +112,7 @@ public class DatosPruebaConfig {
             System.out.println("Ciudades: " + String.join(", ", ciudades));
             System.out.println("Mediciones totales: " + mediciones.size());
             System.out.println("Período: " + fechaInicio.toLocalDate() + " a " + fechaFin.toLocalDate());
-            System.out.println("Frecuencia: cada 2 horas");
+            System.out.println("Intervalo aproximado: cada " + horasIntervalo + " horas");
             System.out.println("================================\n");
         };
     }

@@ -29,4 +29,9 @@ public class SensorService {
     public Sensor buscarPorId(String id) { return sensorRepository.findById(id).orElse(null); }
 
     public Sensor actualizar(Sensor sensor) { return sensorRepository.save(sensor); }
+
+    public void eliminar(String id) { 
+        sensorRepository.deleteById(id); 
+    }
 }
+

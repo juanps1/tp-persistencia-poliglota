@@ -14,6 +14,10 @@ public class MedicionService {
         this.medicionRepository = medicionRepository;
     }
 
+    public List<Medicion> listarTodas() {
+        return medicionRepository.findAll();
+    }
+
     public List<Medicion> listarPorSensor(String sensorId) {
         return medicionRepository.findBySensorId(sensorId);
     }
@@ -21,4 +25,17 @@ public class MedicionService {
     public Medicion guardarMedicion(Medicion medicion) {
         return medicionRepository.save(medicion);
     }
+
+    public Medicion buscarPorId(String id) {
+        return medicionRepository.findById(id).orElse(null);
+    }
+
+    public void eliminar(String id) {
+        medicionRepository.deleteById(id);
+    }
+
+    public long eliminarPorSensor(String sensorId) {
+        return medicionRepository.deleteBySensorId(sensorId);
+    }
 }
+

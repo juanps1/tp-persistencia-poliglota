@@ -1,0 +1,486 @@
+================================================================================
+DOCUMENTACIÓN FRONTEND: AUTENTICACIÓN JWT Y ELIMINACIÓN DE SENSORES/MEDICIONES
+================================================================================
+
+BASE_URL: http://localhost:8080
+
+--------------------------------------------------------------------------------
+1. LOGIN Y OBTENCIÓN DEL TOKEN JWT
+--------------------------------------------------------------------------------
+
+Endpoint: POST /api/auth/login
+Headers: Content-Type: application/json
+Body: {
+  "email": "juanpablo@admin.com",
+  "contrasena": "admin123"
+}
+
+Respuesta exitosa (200):
+{
+  "token": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJqdWFucGFibG9AYWRtaW4uY29tIiwiZXhwIjoxNzMxMzQ1Njc4fQ.xyz..."
+}
+
+Respuesta error (401):
+{
+  "message": "Credenciales inválidas",
+  "errors": {
+    "email": "Email o contraseña incorrectos"
+  }
+}
+
+IMPORTANTE: Guardar el token en localStorage o sessionStorage para usarlo en todas las peticiones protegidas.
+
+--------------------------------------------------------------------------------
+2. ELIMINAR SENSOR (SOLO ADMINISTRADORES)
+--------------------------------------------------------------------------------
+
+Endpoint: DELETE /api/sensores/{id}
+Headers: 
+  Authorization: Bearer {token}
+  Content-Type: application/json
+
+Ejemplo: DELETE /api/sensores/sensor-001
+
+Respuesta exitosa (200):
+{
+  "message": "Sensor eliminado correctamente",
+  "id": "sensor-001"
+}
+
+Respuesta error (404):
+{
+  "message": "Sensor no encontrado",
+  "errors": {
+    "id": "No existe sensor con ese id"
+  }
+}
+
+Respuesta sin autenticación o sin permisos (403):
+Error 403 Forbidden
+
+NOTA: Al eliminar un sensor, considerar eliminar también sus mediciones usando el endpoint de eliminar mediciones por sensor.
+
+--------------------------------------------------------------------------------
+3. ELIMINAR MEDICIÓN INDIVIDUAL (SOLO ADMINISTRADORES)
+--------------------------------------------------------------------------------
+
+Endpoint: DELETE /api/mediciones/{id}
+Headers: 
+  Authorization: Bearer {token}
+  Content-Type: application/json
+
+Ejemplo: DELETE /api/mediciones/673091f81c8e1f3f486c9e4a
+
+Respuesta exitosa (200):
+{
+  "message": "Medición eliminada correctamente",
+  "id": "673091f81c8e1f3f486c9e4a"
+}
+
+Respuesta error (404):
+{
+  "message": "Medición no encontrada",
+  "errors": {
+    "id": "No existe medición con ese id"
+  }
+}
+
+Respuesta sin autenticación o sin permisos (403):
+Error 403 Forbidden
+
+--------------------------------------------------------------------------------
+4. ELIMINAR TODAS LAS MEDICIONES DE UN SENSOR (SOLO ADMINISTRADORES)
+--------------------------------------------------------------------------------
+
+Endpoint: DELETE /api/mediciones/sensor/{sensorId}
+Headers: 
+  Authorization: Bearer {token}
+  Content-Type: application/json
+
+Ejemplo: DELETE /api/mediciones/sensor/sensor-001
+
+Respuesta exitosa (200):
+{
+  "message": "Mediciones eliminadas correctamente",
+  "sensorId": "sensor-001",
+  "cantidad": 1666
+}
+
+Respuesta sin autenticación o sin permisos (403):
+Error 403 Forbidden
+
+RECOMENDACIÓN: Usar este endpoint antes de eliminar un sensor para limpiar todas sus mediciones.
+
+--------------------------------------------------------------------------------
+5. EJEMPLO DE IMPLEMENTACIÓN EN JAVASCRIPT/TYPESCRIPT
+--------------------------------------------------------------------------------
+
+// 1. Login y almacenamiento del token
+async function login(email, password) {
+  const response = await fetch('http://localhost:8080/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, contrasena: password })
+  });
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.message);
+  }
+  
+  const data = await response.json();
+  localStorage.setItem('token', data.token);
+  return data.token;
+}
+
+// 2. Obtener token almacenado
+function getToken() {
+  return localStorage.getItem('token');
+}
+
+// 3. Headers con autenticación
+function getAuthHeaders() {
+  const token = getToken();
+  return {
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'application/json'
+  };
+}
+
+// 4. Eliminar sensor con sus mediciones
+async function eliminarSensorCompleto(sensorId) {
+  try {
+    // Primero eliminar todas las mediciones del sensor
+    const responseMediciones = await fetch(
+      `http://localhost:8080/api/mediciones/sensor/${sensorId}`,
+      {
+        method: 'DELETE',
+        headers: getAuthHeaders()
+      }
+    );
+    
+    if (!responseMediciones.ok) {
+      if (responseMediciones.status === 403) {
+        throw new Error('No tienes permisos para realizar esta acción');
+      }
+      throw new Error('Error al eliminar mediciones');
+    }
+    
+    const resultMediciones = await responseMediciones.json();
+    console.log(`Eliminadas ${resultMediciones.cantidad} mediciones`);
+    
+    // Luego eliminar el sensor
+    const responseSensor = await fetch(
+      `http://localhost:8080/api/sensores/${sensorId}`,
+      {
+        method: 'DELETE',
+        headers: getAuthHeaders()
+      }
+    );
+    
+    if (!responseSensor.ok) {
+      if (responseSensor.status === 403) {
+        throw new Error('No tienes permisos para realizar esta acción');
+      }
+      throw new Error('Error al eliminar sensor');
+    }
+    
+    const resultSensor = await responseSensor.json();
+    console.log(resultSensor.message);
+    return true;
+  } catch (error) {
+    console.error('Error:', error);
+    throw error;
+  }
+}
+
+// 5. Eliminar una medición individual
+async function eliminarMedicion(medicionId) {
+  try {
+    const response = await fetch(
+      `http://localhost:8080/api/mediciones/${medicionId}`,
+      {
+        method: 'DELETE',
+        headers: getAuthHeaders()
+      }
+    );
+    
+    if (!response.ok) {
+      if (response.status === 403) {
+        throw new Error('No tienes permisos para realizar esta acción');
+      }
+      if (response.status === 404) {
+        throw new Error('Medición no encontrada');
+      }
+      throw new Error('Error al eliminar medición');
+    }
+    
+    const result = await response.json();
+    console.log(result.message);
+    return true;
+  } catch (error) {
+    console.error('Error:', error);
+    throw error;
+  }
+}
+
+// 6. Verificar si el usuario está autenticado
+function isAuthenticated() {
+  return !!getToken();
+}
+
+// 7. Logout
+function logout() {
+  localStorage.removeItem('token');
+}
+
+--------------------------------------------------------------------------------
+6. EJEMPLO DE IMPLEMENTACIÓN EN REACT
+--------------------------------------------------------------------------------
+
+import { useState, useEffect } from 'react';
+
+// Hook personalizado para autenticación
+function useAuth() {
+  const [token, setToken] = useState(localStorage.getItem('token'));
+  const [isAdmin, setIsAdmin] = useState(false);
+  
+  const login = async (email, password) => {
+    const response = await fetch('http://localhost:8080/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, contrasena: password })
+    });
+    
+    if (!response.ok) throw new Error('Login fallido');
+    
+    const data = await response.json();
+    localStorage.setItem('token', data.token);
+    setToken(data.token);
+    
+    // Verificar rol (decodificar JWT o hacer request al backend)
+    setIsAdmin(email.includes('admin'));
+    
+    return data.token;
+  };
+  
+  const logout = () => {
+    localStorage.removeItem('token');
+    setToken(null);
+    setIsAdmin(false);
+  };
+  
+  return { token, isAdmin, login, logout, isAuthenticated: !!token };
+}
+
+// Componente de botón para eliminar sensor
+function DeleteSensorButton({ sensorId, onDeleted }) {
+  const { token, isAdmin } = useAuth();
+  const [loading, setLoading] = useState(false);
+  
+  const handleDelete = async () => {
+    if (!window.confirm('¿Seguro que deseas eliminar este sensor y todas sus mediciones?')) {
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      // Eliminar mediciones
+      await fetch(`http://localhost:8080/api/mediciones/sensor/${sensorId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      // Eliminar sensor
+      const response = await fetch(`http://localhost:8080/api/sensores/${sensorId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        alert('Sensor eliminado correctamente');
+        onDeleted?.(sensorId);
+      } else if (response.status === 403) {
+        alert('No tienes permisos para realizar esta acción');
+      } else {
+        alert('Error al eliminar sensor');
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      alert('Error al eliminar sensor');
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  if (!isAdmin) return null;
+  
+  return (
+    <button onClick={handleDelete} disabled={loading}>
+      {loading ? 'Eliminando...' : 'Eliminar Sensor'}
+    </button>
+  );
+}
+
+--------------------------------------------------------------------------------
+7. MANEJO DE ERRORES Y CASOS ESPECIALES
+--------------------------------------------------------------------------------
+
+Error 403 Forbidden:
+- El usuario no tiene permisos de administrador
+- El token no está presente o es inválido
+- Mostrar mensaje: "Esta acción requiere permisos de administrador"
+
+Error 404 Not Found:
+- El sensor o medición no existe
+- Mostrar mensaje: "El recurso no fue encontrado"
+
+Error 401 Unauthorized:
+- El token expiró (válido por 24 horas)
+- Redirigir al usuario a la página de login
+- Limpiar el token almacenado
+
+Token expirado:
+- Los tokens JWT tienen validez de 24 horas
+- Implementar refresh automático o solicitar nuevo login
+- Detectar error 401 y redirigir a login
+
+Sin conexión:
+- Manejar errores de red (NetworkError, CORS, etc.)
+- Mostrar mensaje: "Error de conexión con el servidor"
+
+--------------------------------------------------------------------------------
+8. FLUJO COMPLETO DE ELIMINACIÓN CON CONFIRMACIÓN
+--------------------------------------------------------------------------------
+
+1. Usuario hace clic en botón "Eliminar Sensor"
+2. Verificar que el usuario tenga token JWT válido
+3. Mostrar modal de confirmación con advertencia:
+   "¿Estás seguro? Se eliminarán el sensor y todas sus mediciones (X mediciones). Esta acción no se puede deshacer."
+4. Si confirma:
+   a. Mostrar loading/spinner
+   b. Llamar DELETE /api/mediciones/sensor/{id}
+   c. Esperar respuesta y mostrar cantidad eliminada
+   d. Llamar DELETE /api/sensores/{id}
+   e. Esperar respuesta
+   f. Mostrar mensaje de éxito
+   g. Actualizar lista de sensores (refetch o remove local)
+5. Si hay error:
+   a. Ocultar loading
+   b. Mostrar mensaje de error específico
+   c. Si es 403, sugerir contactar administrador
+
+--------------------------------------------------------------------------------
+9. USUARIOS DISPONIBLES PARA PRUEBAS
+--------------------------------------------------------------------------------
+
+ADMINISTRADOR:
+Email: juanpablo@admin.com
+Contraseña: admin123
+Permisos: Puede eliminar sensores y mediciones
+
+USUARIO NORMAL:
+Email: maria.garcia@example.com
+Contraseña: password123
+Permisos: NO puede eliminar sensores ni mediciones (recibirá 403 Forbidden)
+
+--------------------------------------------------------------------------------
+10. ENDPOINTS ADICIONALES (NO REQUIEREN AUTENTICACIÓN)
+--------------------------------------------------------------------------------
+
+Listar sensores: GET /api/sensores
+Listar mediciones: GET /api/mediciones/{sensorId}
+Crear sensor: POST /api/sensores
+Actualizar sensor: PUT /api/sensores/{id}
+Crear medición: POST /api/mediciones
+
+NOTA: Solo los endpoints DELETE requieren autenticación de administrador.
+
+--------------------------------------------------------------------------------
+11. EJEMPLO DE AXIOS (ALTERNATIVA A FETCH)
+--------------------------------------------------------------------------------
+
+import axios from 'axios';
+
+const api = axios.create({
+  baseURL: 'http://localhost:8080',
+  headers: { 'Content-Type': 'application/json' }
+});
+
+// Interceptor para agregar token automáticamente
+api.interceptors.request.use(config => {
+  const token = localStorage.getItem('token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// Interceptor para manejar errores de autenticación
+api.interceptors.response.use(
+  response => response,
+  error => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('token');
+      window.location.href = '/login';
+    }
+    return Promise.reject(error);
+  }
+);
+
+// Uso
+async function eliminarSensor(id) {
+  try {
+    await api.delete(`/api/mediciones/sensor/${id}`);
+    await api.delete(`/api/sensores/${id}`);
+    return true;
+  } catch (error) {
+    if (error.response?.status === 403) {
+      throw new Error('Sin permisos de administrador');
+    }
+    throw error;
+  }
+}
+
+--------------------------------------------------------------------------------
+12. VALIDACIONES RECOMENDADAS EN EL FRONTEND
+--------------------------------------------------------------------------------
+
+Antes de intentar eliminar:
+1. Verificar que el usuario esté autenticado
+2. Verificar que el usuario sea administrador (guardar rol en estado)
+3. Mostrar/ocultar botones de eliminación según permisos
+4. Deshabilitar botones durante la operación (loading state)
+5. Implementar confirmación doble para acciones destructivas
+6. Mostrar información de impacto (cuántas mediciones se eliminarán)
+
+Manejo de respuestas:
+1. Mostrar feedback visual inmediato (toast, snackbar, alert)
+2. Actualizar UI optimísticamente o refetch datos
+3. Manejar casos edge (sensor ya eliminado, red caída, etc.)
+4. Logging de errores para debugging
+
+--------------------------------------------------------------------------------
+13. SEGURIDAD Y MEJORES PRÁCTICAS
+--------------------------------------------------------------------------------
+
+✓ NUNCA almacenar el token en cookies sin httpOnly
+✓ SIEMPRE enviar el token en el header Authorization
+✓ LIMPIAR el token al hacer logout
+✓ VALIDAR permisos en frontend (UX) y backend (seguridad)
+✓ IMPLEMENTAR timeout y retry para requests
+✓ MOSTRAR mensajes de error claros al usuario
+✓ NO exponer información sensible en mensajes de error
+✓ USAR HTTPS en producción
+✓ IMPLEMENTAR CSRF tokens si usas cookies
+✓ VALIDAR inputs antes de enviar al backend
+
+--------------------------------------------------------------------------------
+FIN DE LA DOCUMENTACIÓN
+--------------------------------------------------------------------------------

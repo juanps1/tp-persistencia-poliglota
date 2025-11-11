@@ -1,0 +1,200 @@
+================================================================================
+DOCUMENTACIÓN FRONTEND: Pestaña "Roles" (Solo Administradores)
+================================================================================
+
+OBJETIVO: Agregar una pestaña "Roles" en la NAVBAR visible SOLO si el usuario autenticado es ADMIN (rolId=1). Desde ahí, listar todos los usuarios y permitir cambiar su rol entre ADMIN (1) y USER (2).
+
+BASE_URL: http://localhost:8080
+REQUISITO: Incluir header Authorization: Bearer {token}
+
+--------------------------------------------------------------------------------
+ENDPOINTS BACKEND DISPONIBLES
+--------------------------------------------------------------------------------
+
+1) Listar usuarios (solo ADMIN)
+GET /api/usuarios
+Headers: Authorization: Bearer {token}
+Respuesta 200: Array<Usuario>
+Usuario: {
+  id: number,
+  email: string,
+  nombreCompleto: string,
+  estado: 'activo' | 'inactivo',
+  fechaRegistro?: string,
+  rol: { id: 1 | 2, descripcion: 'ADMIN' | 'USER' }
+}
+
+2) Cambiar rol de usuario (solo ADMIN)
+PATCH /api/usuarios/{id}/rol
+Headers: Authorization: Bearer {token}
+Body (JSON): { "rolId": 1 | 2 } // 1=ADMIN, 2=USER
+Respuestas:
+- 200 OK: { message: 'Rol actualizado', usuarioId, rolId, rol }
+- 400 Bad Request: { message, errors }
+- 401/403 No autorizado/prohibido
+- 404 No encontrado
+
+--------------------------------------------------------------------------------
+REGLAS DE VISIBILIDAD EN NAVBAR
+--------------------------------------------------------------------------------
+- Mostrar pestaña "Roles" SOLO si el usuario actual es ADMIN (p. ej. si el JWT o el estado global indica rolId=1 o rol='ADMIN').
+
+--------------------------------------------------------------------------------
+FLUJO DE UI
+--------------------------------------------------------------------------------
+- Navbar: pestaña "Roles" visible si isAdmin === true.
+- Vista Roles: tabla con columnas: ID, Email, Nombre, Estado, Rol (select), Acciones (Guardar).
+- El select de Rol tiene 2 opciones: ADMIN (1) y USER (2).
+- Al cambiar el select y presionar Guardar, llamar PATCH /api/usuarios/{id}/rol con el rolId seleccionado.
+- Mostrar toast de éxito o error según respuesta.
+- Actualizar fila o recargar lista tras guardar.
+
+--------------------------------------------------------------------------------
+EJEMPLO EN REACT (TypeScript opcional)
+--------------------------------------------------------------------------------
+// utils/auth.ts
+export function getToken() {
+  return localStorage.getItem('token');
+}
+export function getAuthHeaders() {
+  const token = getToken();
+  return {
+    'Authorization': `Bearer ${token}`,
+    'Content-Type': 'application/json'
+  } as const;
+}
+
+// hooks/useAuth.ts (simplificado)
+import { useState, useEffect } from 'react';
+export function useAuth() {
+  const [token, setToken] = useState(localStorage.getItem('token'));
+  const [role, setRole] = useState<'ADMIN'|'USER'|'UNKNOWN'>('UNKNOWN');
+  const isAdmin = role === 'ADMIN';
+  useEffect(() => {
+    // Opción A: decodificar JWT y extraer rol si lo incluye (no obligatorio en este backend)
+    // Opción B (recomendada): tras login, hacer GET /api/usuarios/me (si lo implementas) o guardar rol en el estado al loguear.
+    // Por ahora, asume que guardas el rol del usuario logueado en localStorage: localStorage.setItem('role', 'ADMIN' | 'USER');
+    const storedRole = localStorage.getItem('role') as 'ADMIN'|'USER'|null;
+    if (storedRole) setRole(storedRole);
+  }, []);
+  return { token, role, isAdmin };
+}
+
+// components/RolesPage.tsx
+import { useEffect, useState } from 'react';
+import { getAuthHeaders } from '../utils/auth';
+
+type Rol = { id: 1|2, descripcion: 'ADMIN'|'USER' };
+type Usuario = {
+  id: number;
+  email: string;
+  nombreCompleto: string;
+  estado: 'activo'|'inactivo';
+  rol: Rol;
+};
+
+export default function RolesPage() {
+  const [usuarios, setUsuarios] = useState<Usuario[]>([]);
+  const [saving, setSaving] = useState<number|null>(null);
+  const [error, setError] = useState<string|null>(null);
+
+  async function fetchUsuarios() {
+    setError(null);
+    const res = await fetch('http://localhost:8080/api/usuarios', { headers: getAuthHeaders() });
+    if (!res.ok) {
+      setError('No se pudo cargar la lista de usuarios');
+      return;
+    }
+    const data: Usuario[] = await res.json();
+    setUsuarios(data);
+  }
+
+  useEffect(() => { fetchUsuarios(); }, []);
+
+  async function guardarRol(usuario: Usuario, rolId: 1|2) {
+    setSaving(usuario.id);
+    setError(null);
+    const res = await fetch(`http://localhost:8080/api/usuarios/${usuario.id}/rol`, {
+      method: 'PATCH',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ rolId })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      setError(err?.message || 'Error al actualizar el rol');
+      setSaving(null);
+      return;
+    }
+    // Refrescar fila
+    await fetchUsuarios();
+    setSaving(null);
+    alert('Rol actualizado correctamente');
+  }
+
+  return (
+    <div style={{ padding: 16 }}>
+      <h2>Gestión de Roles</h2>
+      {error && <div style={{ color: 'red' }}>{error}</div>}
+      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <thead>
+          <tr>
+            <th style={{ textAlign: 'left' }}>ID</th>
+            <th style={{ textAlign: 'left' }}>Email</th>
+            <th style={{ textAlign: 'left' }}>Nombre</th>
+            <th style={{ textAlign: 'left' }}>Estado</th>
+            <th style={{ textAlign: 'left' }}>Rol</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          {usuarios.map(u => (
+            <tr key={u.id}>
+              <td>{u.id}</td>
+              <td>{u.email}</td>
+              <td>{u.nombreCompleto}</td>
+              <td>{u.estado}</td>
+              <td>
+                <select defaultValue={u.rol.id} disabled={saving === u.id} onChange={(e) => {
+                  const val = Number(e.target.value) as 1|2;
+                  setUsuarios(prev => prev.map(x => x.id === u.id ? { ...x, rol: val === 1 ? { id:1, descripcion:'ADMIN' } : { id:2, descripcion:'USER' } } : x));
+                }}>
+                  <option value={1}>ADMIN</option>
+                  <option value={2}>USER</option>
+                </select>
+              </td>
+              <td>
+                <button disabled={saving === u.id} onClick={() => {
+                  const rolId = (usuarios.find(x => x.id === u.id)?.rol.id || u.rol.id) as 1|2;
+                  guardarRol(u, rolId);
+                }}>Guardar</button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// Navbar (pseudo)
+// Mostrar botón/enlace "Roles" solo si isAdmin
+// {isAdmin && <Link to="/roles">Roles</Link>}
+
+--------------------------------------------------------------------------------
+VALIDACIONES Y ERRORES
+--------------------------------------------------------------------------------
+- 401/403: redirigir a Login o mostrar mensaje "Se requieren permisos de administrador".
+- 400: mostrar mensaje de error del backend (campos inválidos, rolId fuera de 1|2).
+- 404: usuario no existe (refrescar lista).
+- Mostrar loading en botón Guardar mientras se actualiza.
+
+--------------------------------------------------------------------------------
+NOTAS
+--------------------------------------------------------------------------------
+- Este backend no expone /api/usuarios/me; si lo necesitas para saber el rol del usuario logueado, conviene implementarlo o guardar el rol en localStorage al momento del login.
+- Los únicos rolId válidos son: 1=ADMIN, 2=USER. El select debe respetar estos valores.
+- Para seguridad extra, ocultá la pestaña Roles para no-admins y protegé la ruta en el router del front.
+
+--------------------------------------------------------------------------------
+FIN
+--------------------------------------------------------------------------------

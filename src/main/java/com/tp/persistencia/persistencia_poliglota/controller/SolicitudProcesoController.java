@@ -1,10 +1,13 @@
 package com.tp.persistencia.persistencia_poliglota.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.tp.persistencia.persistencia_poliglota.model.sql.Proceso;
 import com.tp.persistencia.persistencia_poliglota.model.sql.SolicitudProceso;
 import com.tp.persistencia.persistencia_poliglota.model.sql.Usuario;
+import com.tp.persistencia.persistencia_poliglota.repository.ProcesoRepository;
 import com.tp.persistencia.persistencia_poliglota.repository.UsuarioRepository;
 import com.tp.persistencia.persistencia_poliglota.service.SolicitudProcesoService;
+import com.tp.persistencia.persistencia_poliglota.service.FacturaService;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
@@ -24,12 +27,18 @@ public class SolicitudProcesoController {
 
     private final SolicitudProcesoService solicitudProcesoService;
     private final UsuarioRepository usuarioRepository;
+    private final ProcesoRepository procesoRepository;
+    private final FacturaService facturaService;
     private final ObjectMapper objectMapper;
 
     public SolicitudProcesoController(SolicitudProcesoService solicitudProcesoService,
-                                      UsuarioRepository usuarioRepository) {
+                                      UsuarioRepository usuarioRepository,
+                                      ProcesoRepository procesoRepository,
+                                      FacturaService facturaService) {
         this.solicitudProcesoService = solicitudProcesoService;
         this.usuarioRepository = usuarioRepository;
+        this.procesoRepository = procesoRepository;
+    this.facturaService = facturaService;
         this.objectMapper = new ObjectMapper();
     }
 
@@ -100,6 +109,14 @@ public class SolicitudProcesoController {
                            "errors", Map.of("usuarioId", "No existe")));
             }
 
+            // Validar que el usuario no tenga facturas vencidas
+            if (facturaService.tieneFacturasVencidas(usuarioId)) {
+                return ResponseEntity.status(403).body(
+                    Map.of("message", "Usuario con facturas vencidas", 
+                           "errors", Map.of("facturas", 
+                               "Debe pagar las facturas vencidas antes de solicitar nuevos procesos")));
+            }
+
             // Crear solicitud
             SolicitudProceso solicitud = new SolicitudProceso();
             solicitud.setUsuario(usuario);
@@ -107,8 +124,20 @@ public class SolicitudProcesoController {
             solicitud.setParametrosJson(objectMapper.writeValueAsString(body.get("parametros")));
             solicitud.setEstado("pendiente");
             solicitud.setFechaSolicitud(LocalDateTime.now());
+            
+            // Asignar proceso automáticamente según el tipo
+            procesoRepository.findByTipo(tipoProceso).ifPresent(solicitud::setProceso);
 
             SolicitudProceso guardada = solicitudProcesoService.guardar(solicitud);
+            
+            // Ejecutar el proceso inmediatamente de forma asíncrona
+            new Thread(() -> {
+                try {
+                    solicitudProcesoService.ejecutarProceso(guardada);
+                } catch (Exception e) {
+                    System.err.println("Error al ejecutar proceso inmediato: " + e.getMessage());
+                }
+            }).start();
             
             return ResponseEntity.status(201).body(guardada);
         } catch (Exception e) {

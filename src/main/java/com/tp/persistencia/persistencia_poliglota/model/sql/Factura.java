@@ -19,9 +19,23 @@ public class Factura {
     @JoinColumn(name = "usuario_id")
     private Usuario usuario;
 
+    @Column(nullable = false)
     private LocalDateTime fechaEmision = LocalDateTime.now();
-    private String estado; // pendiente / pagada / vencida
 
-    @OneToMany
-    private List<Proceso> procesosFacturados;
+    @Column
+    private LocalDateTime fechaVencimiento;
+
+    @Column(nullable = false)
+    private Double monto = 0.0;
+
+    @Column(nullable = false)
+    private String estado = "pendiente"; // pendiente / pagada / vencida
+
+    @ElementCollection
+    @CollectionTable(name = "factura_solicitudes", joinColumns = @JoinColumn(name = "factura_id"))
+    @Column(name = "solicitud_proceso_id")
+    private List<Long> solicitudesProcesoIds; // IDs de SolicitudProceso facturadas
+
+    @Column(columnDefinition = "TEXT")
+    private String observaciones;
 }

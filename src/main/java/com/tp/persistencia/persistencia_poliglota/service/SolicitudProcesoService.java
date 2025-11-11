@@ -2,17 +2,19 @@ package com.tp.persistencia.persistencia_poliglota.service;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.tp.persistencia.persistencia_poliglota.model.nosql.Alerta;
+import com.tp.persistencia.persistencia_poliglota.model.sql.Alerta;
+import com.tp.persistencia.persistencia_poliglota.model.sql.TipoAlerta;
+import com.tp.persistencia.persistencia_poliglota.model.sql.Severidad;
 import com.tp.persistencia.persistencia_poliglota.model.nosql.Medicion;
 import com.tp.persistencia.persistencia_poliglota.model.nosql.Sensor;
 import com.tp.persistencia.persistencia_poliglota.model.sql.SolicitudProceso;
 import com.tp.persistencia.persistencia_poliglota.model.sql.Usuario;
 import com.tp.persistencia.persistencia_poliglota.repository.*;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -23,22 +25,21 @@ public class SolicitudProcesoService {
     private final MedicionRepository medicionRepository;
     private final SensorRepository sensorRepository;
     private final AlertaRepository alertaRepository;
-    private final UsuarioRepository usuarioRepository;
-    private final GeneradorPdfService generadorPdfService;
+    @Autowired
+    private GeneradorPdfService generadorPdfService;
+    private final FacturaService facturaService;
     private final ObjectMapper objectMapper;
 
     public SolicitudProcesoService(SolicitudProcesoRepository solicitudProcesoRepository,
                                    MedicionRepository medicionRepository,
                                    SensorRepository sensorRepository,
                                    AlertaRepository alertaRepository,
-                                   UsuarioRepository usuarioRepository,
-                                   GeneradorPdfService generadorPdfService) {
+                                   FacturaService facturaService) {
         this.solicitudProcesoRepository = solicitudProcesoRepository;
         this.medicionRepository = medicionRepository;
         this.sensorRepository = sensorRepository;
         this.alertaRepository = alertaRepository;
-        this.usuarioRepository = usuarioRepository;
-        this.generadorPdfService = generadorPdfService;
+        this.facturaService = facturaService;
         this.objectMapper = new ObjectMapper();
     }
 
@@ -106,14 +107,24 @@ public class SolicitudProcesoService {
             solicitud.setEstado("completado");
             solicitud.setFechaFinalizacion(LocalDateTime.now());
             solicitud.setMensajeError(null);
+            
+            // Guardar la solicitud primero
+            solicitudProcesoRepository.save(solicitud);
+            
+            // Generar factura automáticamente al completar el proceso
+            try {
+                facturaService.generarFacturaParaSolicitud(solicitud);
+            } catch (Exception facturaEx) {
+                // Log del error pero no falla el proceso
+                System.err.println("Error al generar factura para solicitud " + solicitud.getId() + ": " + facturaEx.getMessage());
+            }
 
         } catch (Exception e) {
             solicitud.setEstado("error");
             solicitud.setMensajeError(e.getMessage());
             solicitud.setFechaFinalizacion(LocalDateTime.now());
+            solicitudProcesoRepository.save(solicitud);
         }
-
-        solicitudProcesoRepository.save(solicitud);
     }
 
     private Map<String, Object> ejecutarInformeMaxMin(Map<String, Object> parametros) {
@@ -198,11 +209,12 @@ public class SolicitudProcesoService {
                 
                 // Crear alerta en la base de datos
                 Alerta alerta = new Alerta();
-                alerta.setUsuarioId(usuario.getId());
-                alerta.setMensaje(String.format("Medición fuera de rango - Sensor: %s, Temp: %.2f°C, Hum: %.2f%%", 
-                    medicion.getSensorId(), medicion.getTemperatura(), medicion.getHumedad()));
-                alerta.setNivel("ALTA");
-                alerta.setFechaCreacion(LocalDateTime.now());
+                alerta.setTipo(TipoAlerta.SENSOR);
+                alerta.setSensorId(medicion.getSensorId());
+                alerta.setDescripcion(String.format("Medición fuera de rango - Sensor: %s, Temp: %.2f°C, Hum: %.2f%%",
+                        medicion.getSensorId(), medicion.getTemperatura(), medicion.getHumedad()));
+                alerta.setSeveridad(Severidad.CRITICA);
+                alerta.setOrigen("umbral");
                 alertaRepository.save(alerta);
                 
                 alertasGeneradas++;

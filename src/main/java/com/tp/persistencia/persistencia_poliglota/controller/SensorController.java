@@ -69,6 +69,20 @@ public class SensorController {
         return ResponseEntity.ok(Map.of("id", actualizado.getId(), "nombre", actualizado.getNombre()));
     }
 
+    @DeleteMapping("/{id}")
+    public ResponseEntity<?> eliminar(@PathVariable String id) {
+        Sensor existente = sensorService.buscarPorId(id);
+        if (existente == null) {
+            return ResponseEntity.status(404).body(Map.of(
+                "message", "Sensor no encontrado",
+                "errors", Map.of("id", "No existe sensor con ese id")));
+        }
+        sensorService.eliminar(id);
+        return ResponseEntity.ok(Map.of(
+            "message", "Sensor eliminado correctamente",
+            "id", id));
+    }
+
     private String generarIdDesdeNombre(String nombre) {
         String slug = nombre.toLowerCase()
             .replaceAll("[áàä]", "a")
